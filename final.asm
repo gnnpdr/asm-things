@@ -15,7 +15,6 @@ start:          mov     di, 0080h               ;going to the com str
                 mov     ax, 4c00h               ;out of prog
 	            int     21h
 
-
 ;----------------------------
 ;Changes address for using videomem
 ;Entry: None
@@ -55,7 +54,7 @@ outofvidmem     proc
 ;----------------------------
 ;Fill registers with operands from com str
 ;Entry: di - com string address
-;Exit:  ax - wid,
+;Exit:  ax - width,
 ;       bx - height, 
 ;       cx - color attr
 ;       dx - style, if == 0 -> get frame style string (framestyle)
@@ -65,7 +64,7 @@ getoperands     proc
 
                 add     di, 02h                 ;skip len and first space
 
-                call    getdecnum               ;wid
+                call    getdecnum               ;width
                 mov     ax, bx                  ;to its place
 
                 call    getdecnum               ;height
@@ -106,7 +105,6 @@ skipspace       proc
                 ret
                 endp
 
-
 ;----------------------------
 ;Write dec num in ax
 ;Entry: di - start string address
@@ -146,7 +144,6 @@ out:            mov     di, si
 
                 ret
                 endp
-
 
 ;----------------------------
 ;Write hex num in ax, gets just two symbs
@@ -192,7 +189,6 @@ dig2:           sub     al, 30h
                 ret
                 endp
 
-
 ;----------------------------
 ;Get style num and if it is 0 get style string
 ;Entry: di - start string address
@@ -228,7 +224,6 @@ frsymb:         movsb                           ;bring to si symbs while not spa
 entend:         ret
                 endp
 
-
 ;----------------------------
 ;Get string from com str
 ;Entry: di - string address at current symb
@@ -240,7 +235,7 @@ getstring       proc
                 mov     si, di
                 mov     di, offset framestring
 
-nextch:         movsb                           ;bring to si symbs while not end of 
+nextch:         movsb                                ;bring to si symbs while not end of 
                 cmp     ds:[si], 0Dh                 ;comparing with cr 
                 jne     nextch
 
@@ -251,7 +246,7 @@ nextch:         movsb                           ;bring to si symbs while not end
 
 ;----------------------------
 ;Draws definite frame
-;Entry: ax - wid,
+;Entry: ax - width,
 ;       bx - height
 ;       cx - color attr
 ;       dx - frame style       
@@ -279,9 +274,10 @@ countwid:       push    cx
                 call    gotovidmem
 
 frame:          xor     di, di                  ;null di for frame start address
-                xchg    ax, dx                  ;now ax - symb, dx - wid
+                xchg    ax, dx                  ;now ax - symb, dx - width
+                call    findstart
 
-                cmp     ax, 00h
+                cmp     ax, 00h                 ;SWITCH BH
                 je      randstrtype
 
                 cmp     ax, 01h                 
@@ -325,7 +321,7 @@ frameend:       ret
 
 ;----------------------------
 ;Draws definite frame by one symb
-;Entry: dx - wid,
+;Entry: dx - width,
 ;       bx - height
 ;       ax - frame style symb  
 ;       di - frame start address 
@@ -334,14 +330,17 @@ frameend:       ret
 ;--------------------------
 onesymbfr       proc
 
+                push    di
                 mov     cx, dx                  ;symbs in line cnt
                 rep     stosw                   ;draw full line with symb by ax
 
                 dec     bx                      ;because first line was drawn
                 mov     cx, bx
                 dec     cx
+                pop     di
 
-side:           call    newlineaddr
+side:           add     di, 160
+                push    di
                 stosw
 
                 push    cx
@@ -361,9 +360,11 @@ side:           call    newlineaddr
                 pop     ax
 
                 pop     cx
+                pop     di
                 loop    side
 
-                call    newlineaddr
+                add     di, 160
+                push    di
                 inc     bx
 
                 mov     cx, dx                  ;symbs in line cnt
@@ -372,9 +373,15 @@ side:           call    newlineaddr
                 push    ax
                 mov     ah, 08h 
                 stosw
+                pop     ax
 
-                call    newlineaddr
+                pop     di
+                add     di, 160
                 add     di, 02h
+
+                push    ax
+                mov     ah, 08h 
+
                 mov     cx, dx
                 rep     stosw
                 pop     ax
@@ -384,7 +391,7 @@ side:           call    newlineaddr
 
 ;----------------------------
 ;Draws definite frame by one symb
-;Entry: dx - wid,
+;Entry: dx - width,
 ;       bx - height
 ;       ax - frame style symb 
 ;       di - frame start address
@@ -393,6 +400,7 @@ side:           call    newlineaddr
 ;--------------------------
 strframe        proc
     
+                push    di
                 lodsb                           ;draw first line, al - first symb in the string
                 stosw
 
@@ -408,9 +416,11 @@ strframe        proc
 
                 mov     cx, bx
                 dec     cx
+                pop     di
 
 ;SIDE START             
-difside:        call    newlineaddr
+difside:        add     di, 160
+                push    di
                 lodsb                           ;first symb in side line
                 stosw
 
@@ -422,7 +432,7 @@ difside:        call    newlineaddr
                 pop     cx
 
                 lodsb
-	        stosw
+	            stosw
 
                 dec     bx
                 cmp     bx, cx
@@ -448,11 +458,13 @@ sideshchar:     push    ax                      ;make shadow, save init char cod
 nextside:       inc     bx
                 sub     si, 03h                 ;return to the start of frame style string
 
+                pop     di
                 loop    difside                 
 
 ;LAST LINE
                 add     si, 03h                 ;to the last part of frame style string
-                call    newlineaddr
+                add     di, 160
+                push    di
                 lodsb                           ;al - first symb in the string
                 stosw
 
@@ -468,13 +480,18 @@ nextside:       inc     bx
                 push    ax
                 mov     ah, 08h                 ;black background white letters
                 lodsb
-                stosw               
+                stosw     
+                pop     ax
 
 ;SHADOW 
-                inc     bx
+                inc     bx                      ;DRAW LINW FUNC
 
-                call    newlineaddr
+                pop     di 
+                add     di, 160
                 add     di, 02h
+
+                push    ax
+                mov     ah, 08h
 
                 lodsb                           ;al - first symb in the string
                 stosw
@@ -488,6 +505,55 @@ nextside:       inc     bx
                 stosw
 
                 pop ax
+
+                ret
+                endp
+
+;----------------------------
+;Couts start address of frame (in the center of screen)
+;Entry: bx - height
+;       dx - width
+;Exit:  di - address of new line
+;Destr: ax, bx, dx
+;--------------------------
+findstart       proc
+
+                push    ax
+                push    bx
+
+                push    dx
+                xor     dx, dx
+                mov     di, 5 * 80 * 2 + 40 * 2  ;screen center  CONSTS
+                mov     ax, bx  
+                xor     bx, bx  
+                mov     bx, 02h
+                div     bl
+                mov     ah, 00h
+                mov     bx, 160
+                mul     bx
+                sub     di, ax
+
+                pop     dx
+                mov     ax, dx
+                push    dx
+                xor     dx, dx
+                mov     bl, 02h
+                div     bx
+                xor     dx, dx
+                mul     bx
+                sub     di, ax
+
+                mov     ax, di
+                div     bx 
+                xor     dx, dx
+                mul     bx                      ;get rid of remainder
+                xor     dx, dx
+
+                mov     di, ax
+
+                pop     dx
+                pop     bx
+                pop     ax
 
                 ret
                 endp
@@ -526,7 +592,7 @@ newlineaddr          proc
 
 ;----------------------------
 ;Add text to the center of frame
-;Entry: dx - wid,
+;Entry: dx - width,
 ;       bx - height
 ;       ax - frame style symb 
 ;Exit:  
@@ -535,7 +601,6 @@ newlineaddr          proc
 addtext          proc
 
                 call    strlen  
-                call    findcenter   
                 call    gotovidmem
 
                 push    ax
@@ -545,6 +610,7 @@ addtext          proc
                 div     bl
                 mov     ah, 00h                 
                 mul     bl
+                mov     di, 5 * 80 * 2 + 40 * 2
                 sub     di, ax                  ;go left to word start
 
                 mov     si, offset framestring  ;preparing for printword
@@ -557,9 +623,9 @@ addtext          proc
                 endp
 
 ;----------------------------
-;Counts the center place
+;Calculates the center place
 ;Entry: bx - lines amt
-;       dx - wid, if == 0, wid will be couted
+;       dx - width, if == 0, width will be couted
 ;       cx - string len 
 ;Exit:  di - frame center address
 ;Destr: ax, bx, dx
